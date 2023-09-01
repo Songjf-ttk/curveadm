@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/kpango/glg"
 	"github.com/opencurve/curveadm/cli/cli"
 	comm "github.com/opencurve/curveadm/internal/common"
 	"github.com/opencurve/curveadm/internal/configure/topology"
@@ -111,6 +112,7 @@ type deployOptions struct {
 	insecure        bool
 	poolset         string
 	poolsetDiskType string
+	debug           bool
 }
 
 func checkDeployOptions(options deployOptions) error {
@@ -145,6 +147,7 @@ func NewDeployCommand(curveadm *cli.CurveAdm) *cobra.Command {
 	flags.BoolVarP(&options.insecure, "insecure", "k", false, "Deploy without precheck")
 	flags.StringVar(&options.poolset, "poolset", "default", "poolset name")
 	flags.StringVar(&options.poolsetDiskType, "poolset-disktype", "ssd", "Specify the disk type of physical pool")
+	flags.BoolVar(&options.debug, "debug", false, "Debug deploy progress")
 	return cmd
 }
 
@@ -214,6 +217,7 @@ func genDeployPlaybook(curveadm *cli.CurveAdm,
 	steps = skipDeploySteps(steps, options)
 	poolset := options.poolset
 	diskType := options.poolsetDiskType
+	debug := options.debug
 
 	pb := playbook.NewPlaybook(curveadm)
 	for _, step := range steps {
@@ -230,7 +234,9 @@ func genDeployPlaybook(curveadm *cli.CurveAdm,
 		}
 
 		// options
-		options := map[string]interface{}{}
+		options := map[string]interface{}{
+			comm.DEBUG_MODE: debug,
+		}
 		if step == CREATE_PHYSICAL_POOL {
 			options[comm.KEY_CREATE_POOL_TYPE] = comm.POOL_TYPE_PHYSICAL
 			options[comm.POOLSET] = poolset
@@ -299,36 +305,43 @@ func displayDeployTitle(curveadm *cli.CurveAdm, dcs []*topology.DeployConfig) {
  *   6) balance leader rapidly
  */
 func runDeploy(curveadm *cli.CurveAdm, options deployOptions) error {
-	// 1) parse cluster topology
+	
+	// 1) check debug mode
+	debugmode := options.debug
+	if debugmode {
+		glg.Get().SetLevel(glg.DEBG)
+	}
+	
+	// 2) parse cluster topology
 	dcs, err := curveadm.ParseTopology()
 	if err != nil {
 		return err
 	}
 
-	// 2) skip service role
+	// 3) skip service role
 	dcs = skipServiceRole(dcs, options)
 
-	// 3) precheck before deploy
+	// 4) precheck before deploy
 	err = precheckBeforeDeploy(curveadm, dcs, options)
 	if err != nil {
 		return err
 	}
 
-	// 4) generate deploy playbook
+	// 5) generate deploy playbook
 	pb, err := genDeployPlaybook(curveadm, dcs, options)
 	if err != nil {
 		return err
 	}
 
-	// 5) display title
+	// 6) display title
 	displayDeployTitle(curveadm, dcs)
 
-	// 6) run playground
+	// 7) run playground
 	if err = pb.Run(); err != nil {
 		return err
 	}
 
-	// 7) print success prompt
+	// 8) print success prompt
 	curveadm.WriteOutln("")
 	curveadm.WriteOutln(color.GreenString("Cluster '%s' successfully deployed ^_^."), curveadm.ClusterName())
 	return nil

@@ -303,7 +303,7 @@ func (s *step2StopContainer) Execute(ctx *context.Context) error {
 		ExecOptions: s.curveadm.ExecOptions(),
 	})
 	steps = append(steps, &step.RemoveContainer{
-		Success:     &success, // FIXME(P1): rmeove iff container exist
+		Success:     &success, // FIXME(P1): remove if container exist
 		ContainerId: *s.containerId,
 		ExecOptions: s.curveadm.ExecOptions(),
 	})
@@ -321,6 +321,11 @@ func NewCleanEnvironmentTask(curveadm *cli.CurveAdm, dc *topology.DeployConfig) 
 	hc, err := curveadm.GetHost(dc.GetHost())
 	if err != nil {
 		return nil, err
+	}
+
+	debugmode := curveadm.MemStorage().Get(comm.DEBUG_MODE)
+	if debugmode != nil && debugmode.(bool){
+		return nil, nil
 	}
 
 	// new task
